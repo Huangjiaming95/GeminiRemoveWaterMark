@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nano Banana 批量去水印</title>
+  <style>
+    :root {
+      --bg: #0b1020; --bg-soft: #121a33; --text: #e6ecff; --text-soft: #aab7e8;
+      --primary: #5b8cff; --primary-2: #7b61ff; --ok: #18c37e;
+      --radius: 16px; --shadow: 0 12px 36px rgba(0,0,0,.22);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; color: var(--text); font-family: "Segoe UI", "PingFang SC", sans-serif;
+      background: radial-gradient(900px 500px at 15% -10%, rgba(91,140,255,.24), transparent 55%),
+                  radial-gradient(900px 500px at 90% -10%, rgba(123,97,255,.22), transparent 55%),
+                  var(--bg);
+    }
+    .wrap { max-width: 980px; margin: 28px auto; padding: 0 14px; }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+      border: 1px solid rgba(143,166,255,.24); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 18px;
+    }
+    h1 { margin: 0 0 8px; font-size: 34px; }
+    .sub { margin: 0 0 18px; color: var(--text-soft); }
+    .drop {
+      border: 2px dashed rgba(143,166,255,.45); border-radius: var(--radius);
+      min-height: 160px; display: grid; place-items: center; text-align: center;
+      background: rgba(18,26,51,.55); cursor: pointer; transition: .2s;
+    }
+    .drop:hover { border-color: var(--primary); transform: translateY(-1px); }
+    .drop strong { display: block; font-size: 18px; }
+    .drop span { color: var(--text-soft); font-size: 13px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; margin-top: 14px; }
+    button {
+      border: 1px solid transparent; border-radius: 12px; cursor: pointer;
+      padding: 10px 14px; color:#fff; font-weight: 700;
+      background: linear-gradient(135deg, var(--primary), var(--primary-2));
+    }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .ghost { background: #1a2445; border-color: rgba(143,166,255,.24); color: #dce7ff; }
+    #list { margin-top: 14px; max-height: 220px; overflow: auto; padding: 0; list-style: none; }
+    #list li { font-size: 13px; color: #dbe6ff; padding: 8px 10px; border: 1px solid rgba(143,166,255,.2); border-radius: 10px; margin-bottom: 8px; }
+    .hint { margin-top: 10px; color: var(--text-soft); font-size: 12px; }
+    .ok { color: var(--ok); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>🍌 Nano Banana 批量去水印</h1>
+      <p class="sub">基于 duckiedevelop/Gemini-Watermark-Remover 算法封装的 WebUI（本地处理）</p>
+
+      <label class="drop" for="images">
+        <div>
+          <strong>点击或拖拽上传图片</strong>
+          <span>支持 JPG / PNG / WEBP，可批量处理</span>
+        </div>
+      </label>
+      <input id="images" type="file" accept="image/*" multiple hidden />
+
+      <div class="row">
+        <button id="run">开始批量去水印并下载ZIP</button>
+        <button id="clear" class="ghost">清空选择</button>
+      </div>
+
+      <ul id="list"></ul>
+      <div id="msg" class="hint">等待上传</div>
+    </div>
+  </div>
+
+<script>
+  const images = document.getElementById('images');
+  const list = document.getElementById('list');
+  const msg = document.getElementById('msg');
+  const run = document.getElementById('run');
+  const clearBtn = document.getElementById('clear');
+
+  const selected = [];
+
+  function render() {
+    list.innerHTML = '';
+    selected.forEach(f => {
+      const li = document.createElement('li');
+      li.textContent = `${f.name} (${Math.round(f.size/1024)} KB)`;
+      list.appendChild(li);
+    });
+    msg.innerHTML = selected.length ? `<span class='ok'>已选择 ${selected.length} 张图片</span>` : '等待上传';
+  }
+
+  images.addEventListener('change', () => {
+    for (const f of images.files) selected.push(f);
+    images.value = '';
+    render();
+  });
+
+  clearBtn.onclick = () => { selected.length = 0; render(); };
+
+  run.onclick = async () => {
+    if (!selected.length) return alert('请先上传图片');
+    run.disabled = true;
+    msg.textContent = '处理中，请稍候...';
+
+    const fd = new FormData();
+    selected.forEach(f => fd.append('images', f));
+
+    const resp = await fetch('/api/batch-clean', { method: 'POST', body: fd });
+    if (!resp.ok) {
+      const t = await resp.text();
+      msg.textContent = '处理失败：' + t;
+      run.disabled = false;
+      return;
+    }
+
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'nano-banana-clean.zip';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    msg.innerHTML = "<span class='ok'>处理完成，ZIP 已下载</span>";
+    run.disabled = false;
+  };
+</script>
+</body>
+</html>
