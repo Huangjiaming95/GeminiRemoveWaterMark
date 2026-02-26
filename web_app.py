@@ -137,15 +137,14 @@ def clean_watermark(img: np.ndarray, mode: str = "fixed") -> np.ndarray:
 
         out[y_start:y_end, x_start:x_end] = rec_u8
 
-        ys = max(0, y_start - 2)
-        ye = min(h, y_end + 2)
-        xs = max(0, x_start - 2)
-        xe = min(w, x_end + 2)
-        roi = out[ys:ye, xs:xe]
-        roi_mask = np.ones((ye - ys, xe - xs), dtype=np.uint8) * 255
-        out[ys:ye, xs:xe] = cv2.inpaint(roi, roi_mask, 3, cv2.INPAINT_TELEA)
+        # 精确兜底：只按水印形状掩膜修复，避免整块区域被抹糊
+        precise_mask = (alpha > 0.06).astype(np.uint8) * 255
+        precise_mask = cv2.dilate(precise_mask, np.ones((3, 3), np.uint8), iterations=1)
+        out[y_start:y_end, x_start:x_end] = cv2.inpaint(
+            out[y_start:y_end, x_start:x_end], precise_mask, 2, cv2.INPAINT_TELEA
+        )
 
-        return _cleanup_corner_residual(out)
+        return out
 
     if w > 1024 and h > 1024:
         sz, pad, a_map = 96, 64, ALPHA_96
