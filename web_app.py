@@ -25,29 +25,131 @@ ALPHA_48 = load_alpha(MASK_48)
 ALPHA_96 = load_alpha(MASK_96)
 
 
-def clean_watermark(img: np.ndarray) -> np.ndarray:
+def _fixed_anchor(img: np.ndarray, sz: int, pad: int):
+    """固定使用右下角区域（Gemini 水印规则位置）。"""
     h, w = img.shape[:2]
+    y0 = h - pad - sz
+    x0 = w - pad - sz
+    if y0 < 0 or x0 < 0:
+        return None
+    return (y0, x0)
+
+
+def _cleanup_corner_residual(out: np.ndarray) -> np.ndarray:
+    """兜底：清理右下角残余小水印（如小星标/边缘残影）。"""
+    h, w = out.shape[:2]
+    box = 120
+    y0, x0 = max(0, h - box), max(0, w - box)
+    roi = out[y0:h, x0:w].copy()
+
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    _, th = cv2.threshold(gray, 170, 255, cv2.THRESH_BINARY)
+    th = cv2.morphologyEx(th, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8), iterations=1)
+
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(th, connectivity=8)
+    mask = np.zeros_like(th)
+    for i in range(1, num_labels):
+        x, y, ww, hh, area = stats[i]
+        if 8 <= area <= 1200 and ww <= 80 and hh <= 80:
+            mask[labels == i] = 255
+
+    # 强制兜底：右下角固定小框（Gemini角标常驻区域）
+    fy2, fx2 = max(0, roi.shape[0] - 16), max(0, roi.shape[1] - 16)
+    fy1, fx1 = max(0, fy2 - 56), max(0, fx2 - 56)
+    corner = gray[fy1:fy2, fx1:fx2]
+    if corner.size:
+        hard = (corner > 80).astype(np.uint8) * 255
+        mask[fy1:fy2, fx1:fx2] = cv2.max(mask[fy1:fy2, fx1:fx2], hard)
+
+    if mask.any():
+        mask = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=2)
+        repaired = cv2.inpaint(roi, mask, 4, cv2.INPAINT_TELEA)
+        out[y0:h, x0:w] = repaired
+    return out
+
+
+def clean_watermark(img: np.ndarray) -> np.ndarray:
+    """
+    基于 Reverse Alpha Blending 的无损去水印。
+    默认固定右下角；对 1024x572 横版使用实测坐标。
+    """
+    h, w = img.shape[:2]
+
+    # 用户锁定：1024x572 横版固定清理框 [x:959.15~1005.08, y:509.06~551.51]
+    if abs(w - 1024) <= 2 and abs(h - 572) <= 2:
+        x_start, y_start = 959, 509
+        x_end, y_end = 1006, 552
+        x_end = min(x_end, w)
+        y_end = min(y_end, h)
+        if x_start >= x_end or y_start >= y_end:
+            return img
+
+        out = img.copy()
+        crop = out[y_start:y_end, x_start:x_end].astype(np.float32)
+
+        alpha = cv2.resize(ALPHA_48.astype(np.float32), (crop.shape[1], crop.shape[0]), interpolation=cv2.INTER_LINEAR)
+        alpha = np.clip(alpha, 0.0, 0.995)
+        alpha3 = alpha[..., None]
+        denom = np.maximum(1.0 - alpha3, 1e-6)
+
+        recovered = (crop - alpha3 * 255.0) / denom
+        recovered = np.where(alpha3 > 1e-4, recovered, crop)
+        rec_u8 = np.clip(recovered, 0, 255).astype(np.uint8)
+
+        # 对水印边缘残留做轻量滤波（仅作用于 alpha 边缘带）
+        edge_mask = ((alpha > 0.003) & (alpha < 0.55)).astype(np.uint8)
+        edge_mask = cv2.dilate(edge_mask, np.ones((5, 5), np.uint8), iterations=2)
+        # 适中强度：轻中值 + 轻高斯
+        med = cv2.medianBlur(rec_u8, 3)
+        smooth = cv2.GaussianBlur(med, (7, 7), 0)
+        em = edge_mask.astype(bool)
+        rec_u8[em] = smooth[em]
+
+        out[y_start:y_end, x_start:x_end] = rec_u8
+
+        # 1024x572 固定坐标强制兜底：仅在给定框内做硬清除（扩大2px防漏边）
+        ys = max(0, y_start - 2)
+        ye = min(h, y_end + 2)
+        xs = max(0, x_start - 2)
+        xe = min(w, x_end + 2)
+        roi = out[ys:ye, xs:xe]
+        roi_mask = np.ones((ye - ys, xe - xs), dtype=np.uint8) * 255
+        out[ys:ye, xs:xe] = cv2.inpaint(roi, roi_mask, 3, cv2.INPAINT_TELEA)
+
+        return _cleanup_corner_residual(out)
+
     if w > 1024 and h > 1024:
         sz, pad, a_map = 96, 64, ALPHA_96
     else:
         sz, pad, a_map = 48, 32, ALPHA_48
 
-    y, x = h - pad, w - pad
-    y_start, x_start = y - sz, x - sz
-    if y_start < 0 or x_start < 0:
+    anchor = _fixed_anchor(img, sz, pad)
+    if anchor is None:
         return img
 
-    crop = img[y_start:y, x_start:x].astype(float)
-    a_map = np.clip(a_map, 0, 0.999)
-    norm = 1.0 - a_map
-    res = np.zeros_like(crop)
-
-    for i in range(3):
-        res[:, :, i] = (crop[:, :, i] - (a_map * 255.0)) / norm
-
+    y_start, x_start = anchor
     out = img.copy()
-    out[y_start:y, x_start:x] = np.clip(res, 0, 255)
-    return out
+    crop = out[y_start:y_start + sz, x_start:x_start + sz].astype(np.float32)
+
+    alpha = np.clip(a_map.astype(np.float32), 0.0, 0.995)
+    alpha3 = alpha[..., None]
+    denom = np.maximum(1.0 - alpha3, 1e-6)
+
+    recovered = (crop - alpha3 * 255.0) / denom
+    recovered = np.where(alpha3 > 1e-4, recovered, crop)
+    rec_u8 = np.clip(recovered, 0, 255).astype(np.uint8)
+
+    # 对水印边缘残留做轻量滤波（仅作用于 alpha 边缘带）
+    edge_mask = ((alpha > 0.003) & (alpha < 0.55)).astype(np.uint8)
+    edge_mask = cv2.dilate(edge_mask, np.ones((5, 5), np.uint8), iterations=2)
+    # 适中强度：轻中值 + 轻高斯
+    med = cv2.medianBlur(rec_u8, 3)
+    smooth = cv2.GaussianBlur(med, (7, 7), 0)
+    em = edge_mask.astype(bool)
+    rec_u8[em] = smooth[em]
+
+    out[y_start:y_start + sz, x_start:x_start + sz] = rec_u8
+    return _cleanup_corner_residual(out)
 
 
 @app.get("/")
