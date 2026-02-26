@@ -72,20 +72,21 @@ def _find_best_anchor(img: np.ndarray, sz: int, pad: int, a_map: np.ndarray, sea
     return best
 
 
-def _refine_edge_band(patch: np.ndarray, alpha: np.ndarray) -> np.ndarray:
+def _refine_edge_band(patch: np.ndarray, alpha: np.ndarray, strength: str = "normal") -> np.ndarray:
     """边缘带优化：采样周围像素做局部修复，减少黑边/锯齿感。"""
-    core = (alpha > 0.07).astype(np.uint8) * 255
+    is_strong = (strength == "strong")
+    core = (alpha > (0.06 if is_strong else 0.07)).astype(np.uint8) * 255
     if not core.any():
         return patch
 
-    outer = cv2.dilate(core, np.ones((3, 3), np.uint8), iterations=2)
+    outer = cv2.dilate(core, np.ones((3, 3), np.uint8), iterations=(3 if is_strong else 2))
     inner = cv2.erode(core, np.ones((3, 3), np.uint8), iterations=1)
     ring = cv2.subtract(outer, inner)
-    ring = cv2.bitwise_and(ring, ((alpha > 0.01).astype(np.uint8) * 255))
+    ring = cv2.bitwise_and(ring, ((alpha > (0.008 if is_strong else 0.01)).astype(np.uint8) * 255))
     if not ring.any():
         return patch
 
-    bg_est = cv2.inpaint(patch, core, 3, cv2.INPAINT_TELEA)
+    bg_est = cv2.inpaint(patch, core, (4 if is_strong else 3), cv2.INPAINT_TELEA)
     out = patch.copy()
 
     m = ring.astype(bool)
@@ -95,13 +96,13 @@ def _refine_edge_band(patch: np.ndarray, alpha: np.ndarray) -> np.ndarray:
 
         gp = p.mean(axis=1)
         gb = b.mean(axis=1)
-        dark_idx = gp < (gb - 8)
+        dark_idx = gp < (gb - (6 if is_strong else 8))
 
         p2 = p.copy()
         if dark_idx.any():
-            p2[dark_idx] = 0.72 * b[dark_idx] + 0.28 * p[dark_idx]
+            p2[dark_idx] = (0.82 if is_strong else 0.72) * b[dark_idx] + (0.18 if is_strong else 0.28) * p[dark_idx]
         if (~dark_idx).any():
-            p2[~dark_idx] = 0.45 * b[~dark_idx] + 0.55 * p[~dark_idx]
+            p2[~dark_idx] = (0.58 if is_strong else 0.45) * b[~dark_idx] + (0.42 if is_strong else 0.55) * p[~dark_idx]
 
         out[m] = np.clip(p2, 0, 255).astype(np.uint8)
 
@@ -141,7 +142,7 @@ def _cleanup_corner_residual(out: np.ndarray) -> np.ndarray:
     return out
 
 
-def clean_watermark(img: np.ndarray, mode: str = "fixed") -> np.ndarray:
+def clean_watermark(img: np.ndarray, mode: str = "fixed", edge_strength: str = "normal") -> np.ndarray:
     """
     基于 Reverse Alpha Blending 的无损去水印。
     默认固定右下角；对 1024x572 横版使用实测坐标。
@@ -168,7 +169,7 @@ def clean_watermark(img: np.ndarray, mode: str = "fixed") -> np.ndarray:
         recovered = (crop - alpha3 * 255.0) / denom
         recovered = np.where(alpha3 > 1e-4, recovered, crop)
         rec_u8 = np.clip(recovered, 0, 255).astype(np.uint8)
-        rec_u8 = _refine_edge_band(rec_u8, alpha)
+        rec_u8 = _refine_edge_band(rec_u8, alpha, strength=edge_strength)
 
         out[y_start:y_end, x_start:x_end] = rec_u8
         return out
@@ -196,7 +197,7 @@ def clean_watermark(img: np.ndarray, mode: str = "fixed") -> np.ndarray:
     recovered = (crop - alpha3 * 255.0) / denom
     recovered = np.where(alpha3 > 1e-4, recovered, crop)
     rec_u8 = np.clip(recovered, 0, 255).astype(np.uint8)
-    rec_u8 = _refine_edge_band(rec_u8, alpha)
+    rec_u8 = _refine_edge_band(rec_u8, alpha, strength=edge_strength)
 
     out[y_start:y_start + sz, x_start:x_start + sz] = rec_u8
     return _cleanup_corner_residual(out)
@@ -233,6 +234,9 @@ def batch_clean():
     mode = (request.form.get("mode") or "fixed").strip().lower()
     if mode not in ("fixed", "search"):
         mode = "fixed"
+    edge_strength = (request.form.get("edge_strength") or "normal").strip().lower()
+    if edge_strength not in ("normal", "strong"):
+        edge_strength = "normal"
     if not files:
         return jsonify({"ok": False, "message": "请先上传图片"}), 400
 
@@ -246,7 +250,7 @@ def batch_clean():
             if img is None:
                 continue
 
-            cleaned = clean_watermark(img, mode=mode)
+            cleaned = clean_watermark(img, mode=mode, edge_strength=edge_strength)
             name, ext = os.path.splitext(f.filename or "image.jpg")
             ext = ext.lower() if ext.lower() in [".jpg", ".jpeg", ".png", ".webp"] else ".jpg"
             ok, encoded = cv2.imencode(ext if ext != ".jpeg" else ".jpg", cleaned)

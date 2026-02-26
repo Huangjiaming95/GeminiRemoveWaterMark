@@ -67,6 +67,7 @@
       <div class="mode-row">
         <label class="mode-chip"><input type="radio" name="mode" value="fixed" checked> 固定坐标（1024×572推荐）</label>
         <label class="mode-chip"><input type="radio" name="mode" value="search"> 搜索匹配（位置不固定时）</label>
+        <label class="mode-chip"><input type="checkbox" id="strongEdge"> 强力黑边清除</label>
       </div>
 
       <div class="row">
@@ -90,6 +91,7 @@
 
   const selected = [];
   const modeInputs = document.querySelectorAll('input[name="mode"]');
+  const strongEdge = document.getElementById('strongEdge');
 
   function render() {
     list.innerHTML = '';
@@ -131,10 +133,12 @@
     if (!selected.length) return alert('请先上传图片');
     run.disabled = true;
     const mode = [...modeInputs].find(i => i.checked)?.value || 'fixed';
-    msg.textContent = `处理中，请稍候...（模式：${mode === 'fixed' ? '固定坐标' : '搜索匹配'}）`;
+    const edgeStrength = strongEdge.checked ? 'strong' : 'normal';
+    msg.textContent = `处理中，请稍候...（模式：${mode === 'fixed' ? '固定坐标' : '搜索匹配'}，边缘：${edgeStrength === 'strong' ? '强力' : '标准'}）`;
 
     const fd = new FormData();
     fd.append('mode', mode);
+    fd.append('edge_strength', edgeStrength);
     selected.forEach(f => fd.append('images', f));
 
     const resp = await fetch('/api/batch-clean', { method: 'POST', body: fd });
