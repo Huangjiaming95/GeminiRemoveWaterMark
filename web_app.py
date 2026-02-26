@@ -1,6 +1,7 @@
 import io
 import os
 import zipfile
+import tempfile
 import subprocess
 import urllib.request
 from datetime import datetime
@@ -226,6 +227,52 @@ def launch_undsky():
         return jsonify({"ok": True, "message": "undsky EXE 已启动"})
     except Exception as e:
         return jsonify({"ok": False, "message": f"启动失败: {e}"}), 500
+
+
+@app.post("/api/batch-clean-undsky")
+def batch_clean_undsky():
+    files = request.files.getlist("images")
+    if not files:
+        return jsonify({"ok": False, "message": "请先上传图片"}), 400
+    if os.name != "nt":
+        return jsonify({"ok": False, "message": "当前仅在 Windows 支持 EXE 调用"}), 400
+
+    try:
+        exe_path = _ensure_undsky_exe()
+        with tempfile.TemporaryDirectory(prefix="nb_in_") as in_dir, tempfile.TemporaryDirectory(prefix="nb_out_") as out_dir:
+            for f in files:
+                name = os.path.basename(f.filename or "image.jpg")
+                p = os.path.join(in_dir, name)
+                f.save(p)
+
+            cmd = [exe_path, "-i", in_dir, "-o", out_dir, "-r", "-f", "-q"]
+            proc = subprocess.run(cmd, cwd=UND_SKY_EXE_DIR, capture_output=True, text=True)
+            if proc.returncode != 0:
+                return jsonify({"ok": False, "message": f"undsky处理失败: {proc.stderr or proc.stdout}"}), 500
+
+            zip_buffer = io.BytesIO()
+            processed = []
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                for root, _, fs in os.walk(out_dir):
+                    for fn in fs:
+                        full = os.path.join(root, fn)
+                        rel = os.path.relpath(full, out_dir)
+                        zf.write(full, rel)
+                        processed.append(rel)
+
+            if not processed:
+                return jsonify({"ok": False, "message": "undsky未生成输出文件"}), 500
+
+            zip_buffer.seek(0)
+            ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+            return send_file(
+                zip_buffer,
+                mimetype="application/zip",
+                as_attachment=True,
+                download_name=f"nano-banana-clean-undsky-{ts}.zip",
+            )
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"undsky处理异常: {e}"}), 500
 
 
 @app.post("/api/batch-clean")

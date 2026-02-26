@@ -73,7 +73,7 @@
       <div class="row">
         <button id="run">开始批量去水印并下载ZIP</button>
         <button id="clear" class="ghost">清空选择</button>
-        <button id="launchUndsky" class="ghost">调用 undsky EXE 工具</button>
+        <button id="runUndsky" class="ghost">用 undsky 引擎处理并下载ZIP</button>
       </div>
 
       <ul id="list"></ul>
@@ -87,7 +87,7 @@
   const msg = document.getElementById('msg');
   const run = document.getElementById('run');
   const clearBtn = document.getElementById('clear');
-  const launchUndskyBtn = document.getElementById('launchUndsky');
+  const runUndskyBtn = document.getElementById('runUndsky');
 
   const selected = [];
   const modeInputs = document.querySelectorAll('input[name="mode"]');
@@ -111,22 +111,31 @@
 
   clearBtn.onclick = () => { selected.length = 0; render(); };
 
-  launchUndskyBtn.onclick = async () => {
-    launchUndskyBtn.disabled = true;
-    const old = msg.textContent;
-    msg.textContent = '正在准备并启动 undsky EXE...';
+  runUndskyBtn.onclick = async () => {
+    if (!selected.length) return alert('请先上传图片');
+    runUndskyBtn.disabled = true;
+    msg.textContent = '正在用 undsky 引擎处理，请稍候...';
     try {
-      const resp = await fetch('/api/launch-undsky', { method: 'POST' });
-      const data = await resp.json();
-      if (!resp.ok || !data.ok) {
-        msg.textContent = '启动失败：' + (data.message || '未知错误');
+      const fd = new FormData();
+      selected.forEach(f => fd.append('images', f));
+      const resp = await fetch('/api/batch-clean-undsky', { method: 'POST', body: fd });
+      if (!resp.ok) {
+        const t = await resp.text();
+        msg.textContent = '处理失败：' + t;
       } else {
-        msg.innerHTML = "<span class='ok'>undsky EXE 已启动</span>";
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'nano-banana-clean-undsky.zip';
+        a.click();
+        URL.revokeObjectURL(url);
+        msg.innerHTML = "<span class='ok'>undsky 处理完成，ZIP 已下载</span>";
       }
     } catch (e) {
-      msg.textContent = '启动失败：' + e.message;
+      msg.textContent = '处理失败：' + e.message;
     }
-    launchUndskyBtn.disabled = false;
+    runUndskyBtn.disabled = false;
   };
 
   run.onclick = async () => {
