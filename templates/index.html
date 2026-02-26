@@ -72,6 +72,7 @@
       <div class="row">
         <button id="run">开始批量去水印并下载ZIP</button>
         <button id="clear" class="ghost">清空选择</button>
+        <button id="launchUndsky" class="ghost">调用 undsky EXE 工具</button>
       </div>
 
       <ul id="list"></ul>
@@ -85,6 +86,7 @@
   const msg = document.getElementById('msg');
   const run = document.getElementById('run');
   const clearBtn = document.getElementById('clear');
+  const launchUndskyBtn = document.getElementById('launchUndsky');
 
   const selected = [];
   const modeInputs = document.querySelectorAll('input[name="mode"]');
@@ -106,6 +108,24 @@
   });
 
   clearBtn.onclick = () => { selected.length = 0; render(); };
+
+  launchUndskyBtn.onclick = async () => {
+    launchUndskyBtn.disabled = true;
+    const old = msg.textContent;
+    msg.textContent = '正在准备并启动 undsky EXE...';
+    try {
+      const resp = await fetch('/api/launch-undsky', { method: 'POST' });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) {
+        msg.textContent = '启动失败：' + (data.message || '未知错误');
+      } else {
+        msg.innerHTML = "<span class='ok'>undsky EXE 已启动</span>";
+      }
+    } catch (e) {
+      msg.textContent = '启动失败：' + e.message;
+    }
+    launchUndskyBtn.disabled = false;
+  };
 
   run.onclick = async () => {
     if (!selected.length) return alert('请先上传图片');

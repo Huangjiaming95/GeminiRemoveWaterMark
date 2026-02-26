@@ -1,6 +1,8 @@
 import io
 import os
 import zipfile
+import subprocess
+import urllib.request
 from datetime import datetime
 
 import cv2
@@ -10,6 +12,9 @@ from flask import Flask, render_template, request, send_file, jsonify
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MASK_48 = os.path.join(BASE_DIR, "48.png")
 MASK_96 = os.path.join(BASE_DIR, "96.png")
+UND_SKY_EXE_DIR = os.path.join(BASE_DIR, "tools", "undsky")
+UND_SKY_EXE = os.path.join(UND_SKY_EXE_DIR, "GeminiWatermarkTool.exe")
+UND_SKY_EXE_URL = "https://raw.githubusercontent.com/undsky/banana-watermark-remove-skill/master/tools/GeminiWatermarkTool.exe"
 
 app = Flask(__name__)
 
@@ -200,6 +205,26 @@ def clean_watermark(img: np.ndarray, mode: str = "fixed") -> np.ndarray:
 @app.get("/")
 def index():
     return render_template("index.html")
+
+
+def _ensure_undsky_exe():
+    if os.path.exists(UND_SKY_EXE):
+        return UND_SKY_EXE
+    os.makedirs(UND_SKY_EXE_DIR, exist_ok=True)
+    urllib.request.urlretrieve(UND_SKY_EXE_URL, UND_SKY_EXE)
+    return UND_SKY_EXE
+
+
+@app.post("/api/launch-undsky")
+def launch_undsky():
+    if os.name != "nt":
+        return jsonify({"ok": False, "message": "当前仅在 Windows 支持 EXE 调用"}), 400
+    try:
+        exe_path = _ensure_undsky_exe()
+        subprocess.Popen([exe_path], cwd=UND_SKY_EXE_DIR)
+        return jsonify({"ok": True, "message": "undsky EXE 已启动"})
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"启动失败: {e}"}), 500
 
 
 @app.post("/api/batch-clean")
