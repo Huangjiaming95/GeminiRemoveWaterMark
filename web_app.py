@@ -69,21 +69,32 @@ def _find_best_anchor(img: np.ndarray, sz: int, pad: int, a_map: np.ndarray, sea
 
 def _refine_edge_band(patch: np.ndarray, alpha: np.ndarray) -> np.ndarray:
     """边缘带优化：采样周围像素做局部修复，减少黑边/锯齿感。"""
-    core = (alpha > 0.06).astype(np.uint8) * 255
+    core = (alpha > 0.05).astype(np.uint8) * 255
     if not core.any():
         return patch
 
-    outer = cv2.dilate(core, np.ones((3, 3), np.uint8), iterations=2)
+    outer = cv2.dilate(core, np.ones((5, 5), np.uint8), iterations=2)
     inner = cv2.erode(core, np.ones((3, 3), np.uint8), iterations=1)
     ring = cv2.subtract(outer, inner)
-    ring = cv2.bitwise_and(ring, ((alpha > 0.01).astype(np.uint8) * 255))
+    ring = cv2.bitwise_and(ring, ((alpha > 0.006).astype(np.uint8) * 255))
     if not ring.any():
         return patch
 
-    repaired = cv2.inpaint(patch, ring, 2, cv2.INPAINT_TELEA)
+    # 第1层：环带就地修复
+    repaired = cv2.inpaint(patch, ring, 3, cv2.INPAINT_TELEA)
     out = patch.copy()
     m = ring.astype(bool)
     out[m] = repaired[m]
+
+    # 第2层：仅在环带内做轻微提亮，抑制残余黑边
+    gray = cv2.cvtColor(out, cv2.COLOR_BGR2GRAY)
+    dark = ((gray < 52).astype(np.uint8) * 255)
+    dark_ring = cv2.bitwise_and(dark, ring)
+    if dark_ring.any():
+        blur = cv2.GaussianBlur(out, (5, 5), 0)
+        dm = dark_ring.astype(bool)
+        out[dm] = blur[dm]
+
     return out
 
 
