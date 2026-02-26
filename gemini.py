@@ -4,6 +4,25 @@ import cv2
 import numpy as np
 
 
+def refine_edge_band(patch: np.ndarray, alpha: np.ndarray) -> np.ndarray:
+    core = (alpha > 0.06).astype(np.uint8) * 255
+    if not core.any():
+        return patch
+
+    outer = cv2.dilate(core, np.ones((3, 3), np.uint8), iterations=2)
+    inner = cv2.erode(core, np.ones((3, 3), np.uint8), iterations=1)
+    ring = cv2.subtract(outer, inner)
+    ring = cv2.bitwise_and(ring, ((alpha > 0.01).astype(np.uint8) * 255))
+    if not ring.any():
+        return patch
+
+    repaired = cv2.inpaint(patch, ring, 2, cv2.INPAINT_TELEA)
+    out = patch.copy()
+    m = ring.astype(bool)
+    out[m] = repaired[m]
+    return out
+
+
 def cleanup_corner_residual(out: np.ndarray) -> np.ndarray:
     h, w = out.shape[:2]
     box = 120
@@ -74,6 +93,7 @@ if abs(w - 1024) <= 2 and abs(h - 572) <= 2:
     res = (crop - alpha3 * 255.0) / denom
     res = np.where(alpha3 > 1e-4, res, crop)
     res_u8 = np.clip(res, 0, 255).astype(np.uint8)
+    res_u8 = refine_edge_band(res_u8, alpha)
 
     img[y_start:y_end, x_start:x_end] = res_u8
 else:
@@ -96,13 +116,7 @@ else:
     res = (crop - alpha3 * 255.0) / denom
     res = np.where(alpha3 > 1e-4, res, crop)
     res_u8 = np.clip(res, 0, 255).astype(np.uint8)
-
-    edge_mask = ((alpha > 0.003) & (alpha < 0.55)).astype(np.uint8)
-    edge_mask = cv2.dilate(edge_mask, np.ones((5, 5), np.uint8), iterations=2)
-    med = cv2.medianBlur(res_u8, 3)
-    smooth = cv2.GaussianBlur(med, (7, 7), 0)
-    em = edge_mask.astype(bool)
-    res_u8[em] = smooth[em]
+    res_u8 = refine_edge_band(res_u8, alpha)
 
     img[y_start:y_start + sz, x_start:x_start + sz] = res_u8
 

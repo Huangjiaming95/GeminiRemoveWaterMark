@@ -67,6 +67,26 @@ def _find_best_anchor(img: np.ndarray, sz: int, pad: int, a_map: np.ndarray, sea
     return best
 
 
+def _refine_edge_band(patch: np.ndarray, alpha: np.ndarray) -> np.ndarray:
+    """边缘带优化：采样周围像素做局部修复，减少黑边/锯齿感。"""
+    core = (alpha > 0.06).astype(np.uint8) * 255
+    if not core.any():
+        return patch
+
+    outer = cv2.dilate(core, np.ones((3, 3), np.uint8), iterations=2)
+    inner = cv2.erode(core, np.ones((3, 3), np.uint8), iterations=1)
+    ring = cv2.subtract(outer, inner)
+    ring = cv2.bitwise_and(ring, ((alpha > 0.01).astype(np.uint8) * 255))
+    if not ring.any():
+        return patch
+
+    repaired = cv2.inpaint(patch, ring, 2, cv2.INPAINT_TELEA)
+    out = patch.copy()
+    m = ring.astype(bool)
+    out[m] = repaired[m]
+    return out
+
+
 def _cleanup_corner_residual(out: np.ndarray) -> np.ndarray:
     """兜底：清理右下角残余小水印（如小星标/边缘残影）。"""
     h, w = out.shape[:2]
@@ -127,6 +147,7 @@ def clean_watermark(img: np.ndarray, mode: str = "fixed") -> np.ndarray:
         recovered = (crop - alpha3 * 255.0) / denom
         recovered = np.where(alpha3 > 1e-4, recovered, crop)
         rec_u8 = np.clip(recovered, 0, 255).astype(np.uint8)
+        rec_u8 = _refine_edge_band(rec_u8, alpha)
 
         out[y_start:y_end, x_start:x_end] = rec_u8
         return out
@@ -154,15 +175,7 @@ def clean_watermark(img: np.ndarray, mode: str = "fixed") -> np.ndarray:
     recovered = (crop - alpha3 * 255.0) / denom
     recovered = np.where(alpha3 > 1e-4, recovered, crop)
     rec_u8 = np.clip(recovered, 0, 255).astype(np.uint8)
-
-    # 对水印边缘残留做轻量滤波（仅作用于 alpha 边缘带）
-    edge_mask = ((alpha > 0.003) & (alpha < 0.55)).astype(np.uint8)
-    edge_mask = cv2.dilate(edge_mask, np.ones((5, 5), np.uint8), iterations=2)
-    # 适中强度：轻中值 + 轻高斯
-    med = cv2.medianBlur(rec_u8, 3)
-    smooth = cv2.GaussianBlur(med, (7, 7), 0)
-    em = edge_mask.astype(bool)
-    rec_u8[em] = smooth[em]
+    rec_u8 = _refine_edge_band(rec_u8, alpha)
 
     out[y_start:y_start + sz, x_start:x_start + sz] = rec_u8
     return _cleanup_corner_residual(out)
