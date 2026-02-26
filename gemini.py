@@ -75,21 +75,7 @@ if abs(w - 1024) <= 2 and abs(h - 572) <= 2:
     res = np.where(alpha3 > 1e-4, res, crop)
     res_u8 = np.clip(res, 0, 255).astype(np.uint8)
 
-    edge_mask = ((alpha > 0.003) & (alpha < 0.55)).astype(np.uint8)
-    edge_mask = cv2.dilate(edge_mask, np.ones((5, 5), np.uint8), iterations=2)
-    med = cv2.medianBlur(res_u8, 3)
-    smooth = cv2.GaussianBlur(med, (7, 7), 0)
-    em = edge_mask.astype(bool)
-    res_u8[em] = smooth[em]
-
     img[y_start:y_end, x_start:x_end] = res_u8
-
-    # 精确兜底：只按水印形状掩膜修复，避免整块区域被抹糊
-    precise_mask = (alpha > 0.06).astype(np.uint8) * 255
-    precise_mask = cv2.dilate(precise_mask, np.ones((3, 3), np.uint8), iterations=1)
-    img[y_start:y_end, x_start:x_end] = cv2.inpaint(
-        img[y_start:y_end, x_start:x_end], precise_mask, 2, cv2.INPAINT_TELEA
-    )
 else:
     # 固定右下角区域：横版竖版一致
     if w > 1024 and h > 1024:
