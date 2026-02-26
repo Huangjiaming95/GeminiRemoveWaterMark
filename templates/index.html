@@ -34,6 +34,9 @@
     .drop strong { display: block; font-size: 18px; }
     .drop span { color: var(--text-soft); font-size: 13px; }
     .row { display:flex; gap:10px; flex-wrap:wrap; margin-top: 14px; }
+.mode-row { margin-top: 12px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+.mode-chip { display:flex; align-items:center; gap:6px; font-size:13px; color:#dbe6ff; }
+.mode-chip input { accent-color:#7b61ff; }
     button {
       border: 1px solid transparent; border-radius: 12px; cursor: pointer;
       padding: 10px 14px; color:#fff; font-weight: 700;
@@ -61,6 +64,11 @@
       </label>
       <input id="images" type="file" accept="image/*" multiple hidden />
 
+      <div class="mode-row">
+        <label class="mode-chip"><input type="radio" name="mode" value="fixed" checked> 固定坐标（1024×572推荐）</label>
+        <label class="mode-chip"><input type="radio" name="mode" value="search"> 搜索匹配（位置不固定时）</label>
+      </div>
+
       <div class="row">
         <button id="run">开始批量去水印并下载ZIP</button>
         <button id="clear" class="ghost">清空选择</button>
@@ -79,6 +87,7 @@
   const clearBtn = document.getElementById('clear');
 
   const selected = [];
+  const modeInputs = document.querySelectorAll('input[name="mode"]');
 
   function render() {
     list.innerHTML = '';
@@ -101,9 +110,11 @@
   run.onclick = async () => {
     if (!selected.length) return alert('请先上传图片');
     run.disabled = true;
-    msg.textContent = '处理中，请稍候...';
+    const mode = [...modeInputs].find(i => i.checked)?.value || 'fixed';
+    msg.textContent = `处理中，请稍候...（模式：${mode === 'fixed' ? '固定坐标' : '搜索匹配'}）`;
 
     const fd = new FormData();
+    fd.append('mode', mode);
     selected.forEach(f => fd.append('images', f));
 
     const resp = await fetch('/api/batch-clean', { method: 'POST', body: fd });

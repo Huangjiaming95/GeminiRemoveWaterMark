@@ -35,6 +35,38 @@ def _fixed_anchor(img: np.ndarray, sz: int, pad: int):
     return (y0, x0)
 
 
+def _find_best_anchor(img: np.ndarray, sz: int, pad: int, a_map: np.ndarray, search: int = 20):
+    """右下角附近搜索最可能的水印位置（亮度+alpha权重）。"""
+    h, w = img.shape[:2]
+    base = _fixed_anchor(img, sz, pad)
+    if base is None:
+        return None
+    y0, x0 = base
+
+    y_min = max(0, y0 - search)
+    y_max = min(h - sz, y0 + search)
+    x_min = max(0, x0 - search)
+    x_max = min(w - sz, x0 + search)
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    wm = (a_map > 0.08).astype(np.float32)
+    if wm.sum() <= 1:
+        return (y0, x0)
+
+    best = (y0, x0)
+    best_score = -1e18
+    for yy in range(y_min, y_max + 1):
+        for xx in range(x_min, x_max + 1):
+            patch = gray[yy:yy + sz, xx:xx + sz]
+            if patch.shape[0] != sz or patch.shape[1] != sz:
+                continue
+            score = float((patch * wm).sum() - 0.35 * patch.mean() * wm.sum())
+            if score > best_score:
+                best_score = score
+                best = (yy, xx)
+    return best
+
+
 def _cleanup_corner_residual(out: np.ndarray) -> np.ndarray:
     """兜底：清理右下角残余小水印（如小星标/边缘残影）。"""
     h, w = out.shape[:2]
@@ -68,7 +100,7 @@ def _cleanup_corner_residual(out: np.ndarray) -> np.ndarray:
     return out
 
 
-def clean_watermark(img: np.ndarray) -> np.ndarray:
+def clean_watermark(img: np.ndarray, mode: str = "fixed") -> np.ndarray:
     """
     基于 Reverse Alpha Blending 的无损去水印。
     默认固定右下角；对 1024x572 横版使用实测坐标。
@@ -76,7 +108,7 @@ def clean_watermark(img: np.ndarray) -> np.ndarray:
     h, w = img.shape[:2]
 
     # 用户锁定：1024x572 横版固定清理框 [x:959.15~1005.08, y:509.06~551.51]
-    if abs(w - 1024) <= 2 and abs(h - 572) <= 2:
+    if abs(w - 1024) <= 2 and abs(h - 572) <= 2 and mode != "search":
         x_start, y_start = 959, 509
         x_end, y_end = 1006, 552
         x_end = min(x_end, w)
@@ -96,10 +128,8 @@ def clean_watermark(img: np.ndarray) -> np.ndarray:
         recovered = np.where(alpha3 > 1e-4, recovered, crop)
         rec_u8 = np.clip(recovered, 0, 255).astype(np.uint8)
 
-        # 对水印边缘残留做轻量滤波（仅作用于 alpha 边缘带）
         edge_mask = ((alpha > 0.003) & (alpha < 0.55)).astype(np.uint8)
         edge_mask = cv2.dilate(edge_mask, np.ones((5, 5), np.uint8), iterations=2)
-        # 适中强度：轻中值 + 轻高斯
         med = cv2.medianBlur(rec_u8, 3)
         smooth = cv2.GaussianBlur(med, (7, 7), 0)
         em = edge_mask.astype(bool)
@@ -107,7 +137,6 @@ def clean_watermark(img: np.ndarray) -> np.ndarray:
 
         out[y_start:y_end, x_start:x_end] = rec_u8
 
-        # 1024x572 固定坐标强制兜底：仅在给定框内做硬清除（扩大2px防漏边）
         ys = max(0, y_start - 2)
         ye = min(h, y_end + 2)
         xs = max(0, x_start - 2)
@@ -123,7 +152,10 @@ def clean_watermark(img: np.ndarray) -> np.ndarray:
     else:
         sz, pad, a_map = 48, 32, ALPHA_48
 
-    anchor = _fixed_anchor(img, sz, pad)
+    if mode == "search":
+        anchor = _find_best_anchor(img, sz, pad, a_map, search=20)
+    else:
+        anchor = _fixed_anchor(img, sz, pad)
     if anchor is None:
         return img
 
@@ -160,6 +192,9 @@ def index():
 @app.post("/api/batch-clean")
 def batch_clean():
     files = request.files.getlist("images")
+    mode = (request.form.get("mode") or "fixed").strip().lower()
+    if mode not in ("fixed", "search"):
+        mode = "fixed"
     if not files:
         return jsonify({"ok": False, "message": "请先上传图片"}), 400
 
@@ -173,7 +208,7 @@ def batch_clean():
             if img is None:
                 continue
 
-            cleaned = clean_watermark(img)
+            cleaned = clean_watermark(img, mode=mode)
             name, ext = os.path.splitext(f.filename or "image.jpg")
             ext = ext.lower() if ext.lower() in [".jpg", ".jpeg", ".png", ".webp"] else ".jpg"
             ok, encoded = cv2.imencode(ext if ext != ".jpeg" else ".jpg", cleaned)
