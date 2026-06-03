@@ -1,0 +1,21 @@
+﻿# Python cache and env
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Logs
+logs/
+*.log
+
+# Local IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build / temp
+*.tmp
+*.temp

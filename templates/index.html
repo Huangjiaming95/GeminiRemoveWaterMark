@@ -3,172 +3,760 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:," />
   <title>Nano Banana 批量去水印</title>
   <style>
     :root {
-      --bg: #0b1020; --bg-soft: #121a33; --text: #e6ecff; --text-soft: #aab7e8;
-      --primary: #5b8cff; --primary-2: #7b61ff; --ok: #18c37e;
-      --radius: 16px; --shadow: 0 12px 36px rgba(0,0,0,.22);
+      --bg: #f6faf9;
+      --surface: #ffffff;
+      --surface-soft: #eef7f5;
+      --text: #102421;
+      --text-muted: #5d716e;
+      --primary: #0d9488;
+      --primary-strong: #0f766e;
+      --accent: #ea580c;
+      --accent-strong: #c2410c;
+      --border: #d7e7e4;
+      --border-strong: #99d8cf;
+      --danger: #dc2626;
+      --ok: #15803d;
+      --radius: 8px;
+      --shadow: 0 16px 40px rgba(15, 118, 110, .10);
     }
-    * { box-sizing: border-box; }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-height: 100%;
+    }
+
     body {
-      margin: 0; color: var(--text); font-family: "Segoe UI", "PingFang SC", sans-serif;
-      background: radial-gradient(900px 500px at 15% -10%, rgba(91,140,255,.24), transparent 55%),
-                  radial-gradient(900px 500px at 90% -10%, rgba(123,97,255,.22), transparent 55%),
-                  var(--bg);
+      min-height: 100dvh;
+      margin: 0;
+      color: var(--text);
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+      background:
+        linear-gradient(180deg, rgba(13, 148, 136, .10), rgba(246, 250, 249, 0) 320px),
+        var(--bg);
     }
-    .wrap { max-width: 980px; margin: 28px auto; padding: 0 14px; }
-    .card {
-      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
-      border: 1px solid rgba(143,166,255,.24); border-radius: var(--radius);
-      box-shadow: var(--shadow); padding: 18px;
+
+    button,
+    input {
+      font: inherit;
     }
-    h1 { margin: 0 0 8px; font-size: 34px; }
-    .sub { margin: 0 0 18px; color: var(--text-soft); }
-    .drop {
-      border: 2px dashed rgba(143,166,255,.45); border-radius: var(--radius);
-      min-height: 160px; display: grid; place-items: center; text-align: center;
-      background: rgba(18,26,51,.55); cursor: pointer; transition: .2s;
-    }
-    .drop:hover { border-color: var(--primary); transform: translateY(-1px); }
-    .drop strong { display: block; font-size: 18px; }
-    .drop span { color: var(--text-soft); font-size: 13px; }
-    .row { display:flex; gap:10px; flex-wrap:wrap; margin-top: 14px; }
-.mode-row { margin-top: 12px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
-.mode-chip { display:flex; align-items:center; gap:6px; font-size:13px; color:#dbe6ff; }
-.mode-chip input { accent-color:#7b61ff; }
+
     button {
-      border: 1px solid transparent; border-radius: 12px; cursor: pointer;
-      padding: 10px 14px; color:#fff; font-weight: 700;
-      background: linear-gradient(135deg, var(--primary), var(--primary-2));
+      min-height: 44px;
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 700;
+      transition: background-color .18s ease, border-color .18s ease, color .18s ease, transform .18s ease;
     }
-    button:disabled { opacity: .6; cursor: not-allowed; }
-    .ghost { background: #1a2445; border-color: rgba(143,166,255,.24); color: #dce7ff; }
-    #list { margin-top: 14px; max-height: 220px; overflow: auto; padding: 0; list-style: none; }
-    #list li { font-size: 13px; color: #dbe6ff; padding: 8px 10px; border: 1px solid rgba(143,166,255,.2); border-radius: 10px; margin-bottom: 8px; }
-    .hint { margin-top: 10px; color: var(--text-soft); font-size: 12px; }
-    .ok { color: var(--ok); }
+
+    button:focus-visible,
+    .drop:focus-visible,
+    input:focus-visible {
+      outline: 3px solid rgba(13, 148, 136, .28);
+      outline-offset: 3px;
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: .58;
+    }
+
+    .page {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 36px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .eyebrow {
+      margin: 0 0 6px;
+      color: var(--primary-strong);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+
+    .summary {
+      max-width: 620px;
+      margin: 10px 0 0;
+      color: var(--text-muted);
+    }
+
+    .status-pill {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      min-height: 36px;
+      padding: 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--primary-strong);
+      background: var(--surface);
+      font-size: 14px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 18px 0;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.3;
+    }
+
+    .panel-desc {
+      margin: 5px 0 0;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .drop {
+      display: grid;
+      place-items: center;
+      min-height: 236px;
+      margin: 18px;
+      border: 2px dashed var(--border-strong);
+      border-radius: var(--radius);
+      color: var(--text);
+      background: var(--surface-soft);
+      text-align: center;
+      cursor: pointer;
+      transition: background-color .18s ease, border-color .18s ease;
+    }
+
+    .drop:hover,
+    .drop.is-dragover {
+      border-color: var(--primary);
+      background: #e2f5f1;
+    }
+
+    .drop-mark {
+      display: inline-grid;
+      place-items: center;
+      width: 54px;
+      height: 54px;
+      margin-bottom: 14px;
+      border-radius: 16px;
+      color: var(--primary-strong);
+      background: #d8f3ee;
+      font-size: 28px;
+      font-weight: 800;
+    }
+
+    .drop strong {
+      display: block;
+      font-size: 20px;
+      line-height: 1.35;
+    }
+
+    .drop span {
+      display: block;
+      margin-top: 6px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .file-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 18px 18px;
+    }
+
+    .file-count {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .link-button {
+      min-height: 36px;
+      padding: 6px 10px;
+      color: var(--primary-strong);
+      border-color: var(--border);
+      background: #fff;
+      font-size: 14px;
+    }
+
+    .link-button:hover {
+      border-color: var(--primary);
+      background: #effaf8;
+    }
+
+    #list {
+      display: grid;
+      gap: 8px;
+      max-height: 250px;
+      margin: 0;
+      padding: 0 18px 18px;
+      overflow: auto;
+      list-style: none;
+    }
+
+    #list li {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fbfefd;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .file-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-size {
+      flex: 0 0 auto;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .settings {
+      padding: 18px;
+    }
+
+    .section {
+      padding-top: 18px;
+      margin-top: 18px;
+      border-top: 1px solid var(--border);
+    }
+
+    .section:first-child {
+      padding-top: 0;
+      margin-top: 0;
+      border-top: 0;
+    }
+
+    .section-label {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .mode-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .mode-chip {
+      display: grid;
+      grid-template-columns: 20px 1fr;
+      gap: 10px;
+      align-items: start;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fbfefd;
+      cursor: pointer;
+    }
+
+    .mode-chip:hover {
+      border-color: var(--border-strong);
+    }
+
+    .mode-chip input {
+      width: 18px;
+      height: 18px;
+      margin: 2px 0 0;
+      accent-color: var(--primary);
+    }
+
+    .mode-chip strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .mode-chip span {
+      display: block;
+      margin-top: 3px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .toggle {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fbfefd;
+      cursor: pointer;
+    }
+
+    .toggle input {
+      width: 18px;
+      height: 18px;
+      margin: 2px 0 0;
+      accent-color: var(--accent);
+    }
+
+    .toggle strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .toggle span {
+      display: block;
+      margin-top: 3px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .actions {
+      display: grid;
+      gap: 10px;
+    }
+
+    .primary {
+      color: #fff;
+      background: var(--accent);
+    }
+
+    .primary:hover {
+      background: var(--accent-strong);
+    }
+
+    .secondary {
+      color: #fff;
+      background: var(--primary);
+    }
+
+    .secondary:hover {
+      background: var(--primary-strong);
+    }
+
+    #msg {
+      min-height: 44px;
+      margin-top: 14px;
+      padding: 11px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      background: #fbfefd;
+      font-size: 14px;
+    }
+
+    #msg.ok {
+      color: var(--ok);
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+    }
+
+    #msg.error {
+      color: var(--danger);
+      border-color: #fecaca;
+      background: #fff1f2;
+    }
+
+    .tips {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      color: var(--text-muted);
+      font-size: 13px;
+      list-style: none;
+    }
+
+    .tips li {
+      padding-left: 14px;
+      position: relative;
+    }
+
+    .tips li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: .72em;
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      background: var(--primary);
+    }
+
+    @media (max-width: 820px) {
+      .page {
+        width: min(100% - 24px, 640px);
+        padding-top: 22px;
+      }
+
+      .topbar,
+      .workspace {
+        display: block;
+      }
+
+      .status-pill {
+        margin-top: 14px;
+      }
+
+      .panel + .panel {
+        margin-top: 14px;
+      }
+
+      .drop {
+        min-height: 210px;
+      }
+    }
+
+    @media (max-width: 460px) {
+      .page {
+        width: min(100% - 18px, 420px);
+      }
+
+      .panel-header,
+      .file-toolbar {
+        display: block;
+      }
+
+      .link-button {
+        width: 100%;
+        margin-top: 10px;
+      }
+
+      #list li {
+        display: block;
+      }
+
+      .file-size {
+        display: block;
+        margin-top: 4px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition: none !important;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>🍌 Nano Banana 批量去水印</h1>
-      <p class="sub">基于 duckiedevelop/Gemini-Watermark-Remover 算法封装的 WebUI（本地处理）</p>
+  <main class="page">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">本地批量处理工具</p>
+        <h1>Nano Banana 批量去水印</h1>
+        <p class="summary">上传图片后选择处理模式，WebUI 会在本机完成处理并打包下载 ZIP。</p>
+      </div>
+      <div class="status-pill">服务地址：127.0.0.1:5050</div>
+    </header>
 
-      <label class="drop" for="images">
-        <div>
-          <strong>点击或拖拽上传图片</strong>
-          <span>支持 JPG / PNG / WEBP，可批量处理</span>
+    <section class="workspace" aria-label="去水印工作区">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">图片队列</h2>
+            <p class="panel-desc">支持 JPG、PNG、WEBP，可一次选择多张。</p>
+          </div>
         </div>
-      </label>
-      <input id="images" type="file" accept="image/*" multiple hidden />
 
-      <div class="mode-row">
-        <label class="mode-chip"><input type="radio" name="mode" value="fixed" checked> 固定坐标（1024×572推荐）</label>
-        <label class="mode-chip"><input type="radio" name="mode" value="search"> 搜索匹配（位置不固定时）</label>
-        <label class="mode-chip"><input type="checkbox" id="strongEdge"> 强力黑边清除</label>
+        <label class="drop" id="drop" for="images" tabindex="0" role="button" aria-label="选择或拖拽上传图片">
+          <span>
+            <span class="drop-mark">+</span>
+            <strong>点击选择，或把图片拖到这里</strong>
+            <span>建议先用少量图片确认效果，再批量处理。</span>
+          </span>
+        </label>
+        <input id="images" type="file" accept="image/*" multiple hidden />
+
+        <div class="file-toolbar">
+          <div class="file-count" id="fileCount">尚未选择图片</div>
+          <button id="clear" class="link-button" type="button">清空队列</button>
+        </div>
+        <ul id="list" aria-label="已选择的图片"></ul>
       </div>
 
-      <div class="row">
-        <button id="run">开始批量去水印并下载ZIP</button>
-        <button id="clear" class="ghost">清空选择</button>
-        <button id="runUndsky" class="ghost">用 undsky 引擎处理并下载ZIP</button>
-      </div>
+      <aside class="panel settings" aria-label="处理设置">
+        <div class="section">
+          <span class="section-label">处理模式</span>
+          <div class="mode-stack">
+            <label class="mode-chip">
+              <input type="radio" name="mode" value="fixed" checked />
+              <span>
+                <strong>固定坐标</strong>
+                <span>适合 1024 x 572 等常规 Nano Banana 输出。</span>
+              </span>
+            </label>
+            <label class="mode-chip">
+              <input type="radio" name="mode" value="search" />
+              <span>
+                <strong>搜索匹配</strong>
+                <span>水印位置不完全固定时使用，速度会略慢。</span>
+              </span>
+            </label>
+          </div>
+        </div>
 
-      <ul id="list"></ul>
-      <div id="msg" class="hint">等待上传</div>
-    </div>
-  </div>
+        <div class="section">
+          <span class="section-label">边缘修复</span>
+          <label class="toggle">
+            <input type="checkbox" id="strongEdge" />
+            <span>
+              <strong>强力黑边清除</strong>
+              <span>水印边缘残影明显时开启，普通图片建议先关闭。</span>
+            </span>
+          </label>
+        </div>
 
-<script>
-  const images = document.getElementById('images');
-  const list = document.getElementById('list');
-  const msg = document.getElementById('msg');
-  const run = document.getElementById('run');
-  const clearBtn = document.getElementById('clear');
-  const runUndskyBtn = document.getElementById('runUndsky');
+        <div class="section">
+          <span class="section-label">开始处理</span>
+          <div class="actions">
+            <button id="run" class="primary" type="button">批量去水印并下载 ZIP</button>
+            <button id="run2752" class="secondary" type="button">2752 x 1536 大图模式</button>
+          </div>
+          <div id="msg" role="status" aria-live="polite">等待上传图片。</div>
+        </div>
 
-  const selected = [];
-  const modeInputs = document.querySelectorAll('input[name="mode"]');
-  const strongEdge = document.getElementById('strongEdge');
+        <div class="section">
+          <span class="section-label">小提示</span>
+          <ul class="tips">
+            <li>固定坐标速度最快，适合大多数右下角水印。</li>
+            <li>搜索匹配更稳，但处理大量图片会多花一点时间。</li>
+            <li>所有处理都在本机完成，浏览器只负责上传到本地服务。</li>
+          </ul>
+        </div>
+      </aside>
+    </section>
+  </main>
 
-  function render() {
-    list.innerHTML = '';
-    selected.forEach(f => {
-      const li = document.createElement('li');
-      li.textContent = `${f.name} (${Math.round(f.size/1024)} KB)`;
-      list.appendChild(li);
-    });
-    msg.innerHTML = selected.length ? `<span class='ok'>已选择 ${selected.length} 张图片</span>` : '等待上传';
-  }
+  <script>
+    const images = document.getElementById('images');
+    const drop = document.getElementById('drop');
+    const list = document.getElementById('list');
+    const msg = document.getElementById('msg');
+    const fileCount = document.getElementById('fileCount');
+    const run = document.getElementById('run');
+    const run2752Btn = document.getElementById('run2752');
+    const clearBtn = document.getElementById('clear');
+    const modeInputs = document.querySelectorAll('input[name="mode"]');
+    const strongEdge = document.getElementById('strongEdge');
+    const selected = [];
 
-  images.addEventListener('change', () => {
-    for (const f of images.files) selected.push(f);
-    images.value = '';
-    render();
-  });
+    function fileKey(file) {
+      return `${file.name}_${file.size}_${file.lastModified}`;
+    }
 
-  clearBtn.onclick = () => { selected.length = 0; render(); };
+    function addFiles(files) {
+      const existing = new Set(selected.map(fileKey));
+      Array.from(files)
+        .filter(file => file.type.startsWith('image/'))
+        .forEach(file => {
+          const key = fileKey(file);
+          if (!existing.has(key)) {
+            selected.push(file);
+            existing.add(key);
+          }
+        });
+      render();
+    }
 
-  runUndskyBtn.onclick = async () => {
-    if (!selected.length) return alert('请先上传图片');
-    runUndskyBtn.disabled = true;
-    msg.textContent = '正在用 undsky 引擎处理，请稍候...';
-    try {
-      const fd = new FormData();
-      selected.forEach(f => fd.append('images', f));
-      const resp = await fetch('/api/batch-clean-undsky', { method: 'POST', body: fd });
-      if (!resp.ok) {
-        const t = await resp.text();
-        msg.textContent = '处理失败：' + t;
+    function setMessage(text, type = '') {
+      msg.textContent = text;
+      msg.className = type;
+    }
+
+    function setBusy(button, busyText) {
+      button.dataset.text = button.textContent;
+      button.textContent = busyText;
+      button.disabled = true;
+    }
+
+    function clearBusy(button) {
+      button.textContent = button.dataset.text || button.textContent;
+      button.disabled = false;
+    }
+
+    function render() {
+      list.innerHTML = '';
+
+      selected.forEach(file => {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        const size = document.createElement('span');
+
+        name.className = 'file-name';
+        size.className = 'file-size';
+        name.textContent = file.name;
+        size.textContent = `${Math.max(1, Math.round(file.size / 1024))} KB`;
+
+        li.appendChild(name);
+        li.appendChild(size);
+        list.appendChild(li);
+      });
+
+      fileCount.textContent = selected.length ? `已选择 ${selected.length} 张图片` : '尚未选择图片';
+      if (selected.length) {
+        setMessage(`队列已就绪，共 ${selected.length} 张图片。`, 'ok');
       } else {
+        setMessage('等待上传图片。');
+      }
+    }
+
+    function currentMode() {
+      return Array.from(modeInputs).find(input => input.checked)?.value || 'fixed';
+    }
+
+    async function downloadBatch(options) {
+      if (!selected.length) {
+        alert('请先上传图片。');
+        return;
+      }
+
+      setBusy(options.button, '处理中...');
+      const edgeStrength = strongEdge.checked ? 'strong' : 'normal';
+      setMessage(options.pendingText);
+
+      try {
+        const fd = new FormData();
+        fd.append('mode', options.mode);
+        fd.append('edge_strength', edgeStrength);
+        selected.forEach(file => fd.append('images', file));
+
+        const resp = await fetch('/api/batch-clean', { method: 'POST', body: fd });
+        if (!resp.ok) {
+          const text = await resp.text();
+          setMessage(`处理失败：${text}`, 'error');
+          return;
+        }
+
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'nano-banana-clean-undsky.zip';
+        a.download = options.downloadName;
         a.click();
         URL.revokeObjectURL(url);
-        msg.innerHTML = "<span class='ok'>undsky 处理完成，ZIP 已下载</span>";
+        setMessage(options.successText, 'ok');
+      } catch (error) {
+        setMessage(`处理失败：${error.message}`, 'error');
+      } finally {
+        clearBusy(options.button);
       }
-    } catch (e) {
-      msg.textContent = '处理失败：' + e.message;
-    }
-    runUndskyBtn.disabled = false;
-  };
-
-  run.onclick = async () => {
-    if (!selected.length) return alert('请先上传图片');
-    run.disabled = true;
-    const mode = [...modeInputs].find(i => i.checked)?.value || 'fixed';
-    const edgeStrength = strongEdge.checked ? 'strong' : 'normal';
-    msg.textContent = `处理中，请稍候...（模式：${mode === 'fixed' ? '固定坐标' : '搜索匹配'}，边缘：${edgeStrength === 'strong' ? '强力' : '标准'}）`;
-
-    const fd = new FormData();
-    fd.append('mode', mode);
-    fd.append('edge_strength', edgeStrength);
-    selected.forEach(f => fd.append('images', f));
-
-    const resp = await fetch('/api/batch-clean', { method: 'POST', body: fd });
-    if (!resp.ok) {
-      const t = await resp.text();
-      msg.textContent = '处理失败：' + t;
-      run.disabled = false;
-      return;
     }
 
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'nano-banana-clean.zip';
-    a.click();
-    URL.revokeObjectURL(url);
+    images.addEventListener('change', () => {
+      addFiles(images.files);
+      images.value = '';
+    });
 
-    msg.innerHTML = "<span class='ok'>处理完成，ZIP 已下载</span>";
-    run.disabled = false;
-  };
-</script>
+    drop.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        images.click();
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach(type => {
+      drop.addEventListener(type, event => {
+        event.preventDefault();
+        drop.classList.add('is-dragover');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(type => {
+      drop.addEventListener(type, event => {
+        event.preventDefault();
+        drop.classList.remove('is-dragover');
+      });
+    });
+
+    drop.addEventListener('drop', event => {
+      addFiles(event.dataTransfer.files);
+    });
+
+    clearBtn.addEventListener('click', () => {
+      selected.length = 0;
+      render();
+    });
+
+    run.addEventListener('click', async () => {
+      const mode = currentMode();
+      const modeLabel = mode === 'fixed' ? '固定坐标' : '搜索匹配';
+      const edgeLabel = strongEdge.checked ? '强力黑边' : '标准边缘';
+
+      await downloadBatch({
+        mode,
+        button: run,
+        downloadName: 'nano-banana-clean.zip',
+        pendingText: `正在处理：${modeLabel}，${edgeLabel}。`,
+        successText: '处理完成，ZIP 已开始下载。'
+      });
+    });
+
+    run2752Btn.addEventListener('click', async () => {
+      const edgeLabel = strongEdge.checked ? '强力黑边' : '标准边缘';
+
+      await downloadBatch({
+        mode: '2752',
+        button: run2752Btn,
+        downloadName: 'nano-banana-clean-2752.zip',
+        pendingText: `正在处理：2752 x 1536 大图模式，${edgeLabel}。`,
+        successText: '大图模式处理完成，ZIP 已开始下载。'
+      });
+    });
+
+    render();
+  </script>
 </body>
 </html>
